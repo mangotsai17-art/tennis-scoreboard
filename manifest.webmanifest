@@ -1,0 +1,17 @@
+{
+  "name": "網球計分板",
+  "short_name": "網球計分",
+  "description": "平板用的網球計分板：搶七、正式比賽、雙打、擲硬幣與比賽計時。",
+  "lang": "zh-Hant",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#1b4226",
+  "theme_color": "#1b4226",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

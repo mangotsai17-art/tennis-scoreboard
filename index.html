@@ -1,0 +1,1309 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="description" content="平板用的網球計分板：搶七、一盤、三盤兩勝、五盤三勝，支援雙打、擲硬幣與比賽計時。">
+<meta name="theme-color" content="#1b4226">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="網球計分板">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);box-sizing:border-box}body{margin:0;font-size:14px}img{max-width:100%}</style>
+<title>網球計分板</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link id="fontLink" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout: one landscape screen = the court seen from above. Scorebug on top, one team per half; tap a half to give that team the point. */
+:root {
+  --surface: #1f5b93;      /* playing surface, set per court type */
+  --surround: #2f6e4f;
+  --stripes: 0;
+  --runoff: #2f6e4f;
+  --wear: 0;
+  --ink: #f4f8fb;
+  --muted: rgba(244,248,251,.7);
+  --ball: #dcf04b;         /* accent, user-adjustable */
+  --ball-ink: #1b2a08;
+  --card: #0e2740;         /* interface colour, user-adjustable */
+  --panel: color-mix(in srgb, var(--card) 88%, transparent);
+  --alert: #ff7a45;
+  --gold: #f7c425;
+  --font-num: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+  --font-text: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --name-scale: 1;
+  --score-scale: 1;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  background: var(--surround); color: var(--ink); font-family: var(--font-text);
+  overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+  transition: background-color .4s;
+}
+.app {
+  height: 100%; display: grid; grid-template-rows: auto 1fr; gap: 10px;
+  padding-block: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+}
+
+/* ---------- top bar ---------- */
+.bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+.title { display: grid; gap: 2px; min-width: 0; }
+.title b { font-size: 1.2rem; font-weight: 700; letter-spacing: .04em; }
+.title .sub { color: var(--muted); font-size: .85rem; display: flex; gap: 10px; align-items: center; font-variant-numeric: tabular-nums; }
+.clock { display: inline-flex; gap: 5px; align-items: center; font-family: var(--font-num); font-size: 1.05rem; font-weight: 600; color: var(--ink); }
+.clock svg { width: 14px; height: 14px; }
+.bug {
+  border-collapse: separate; border-spacing: 0; background: var(--panel); border-radius: 10px; overflow: hidden;
+  font-family: var(--font-num); font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.bug td { padding: 3px 9px; text-align: center; border-top: 1px solid rgba(255,255,255,.08); }
+.bug tr:first-child td { border-top: 0; }
+.bug .bn { text-align: left; font-family: var(--font-text); font-size: .95rem; font-weight: 700; max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bug .sv { width: 10px; padding-right: 0; }
+.bug .sv i { display: block; width: 9px; height: 9px; border-radius: 50%; background: var(--ball); }
+.bug .cur { background: var(--ball); color: var(--ball-ink); min-width: 1.4em; }
+.bug .won { color: var(--ball); }
+.bug sup { font-size: .65em; margin-left: 1px; }
+.tools { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn {
+  font: 500 .95rem var(--font-text); color: var(--ink);
+  background: var(--panel); border: 1px solid rgba(255,255,255,.18);
+  padding: 9px 15px; border-radius: 10px; cursor: pointer; touch-action: manipulation;
+}
+.btn:active { transform: scale(.96); }
+.btn:focus-visible, .side:focus-visible, .seg label:focus-within { outline: 3px solid var(--ball); outline-offset: 3px; }
+.btn.primary { background: var(--ball); color: var(--ball-ink); border-color: transparent; font-weight: 700; }
+.btn[disabled] { opacity: .4; pointer-events: none; }
+
+/* ---------- court ---------- */
+.court { position: relative; min-height: 0; background: var(--surround); border-radius: 4px; overflow: hidden; transition: background-color .4s; }
+.court-art { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.court-art .surf { fill: var(--surface); transition: fill .4s; }
+.court-art .stripes { opacity: var(--stripes); }
+.court-art .runoff { fill: var(--runoff); transition: fill .4s; }
+.court-art .wear { opacity: var(--wear); }
+.side {
+  position: absolute; top: 0; bottom: 0; width: 50%; z-index: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.1vh;
+  cursor: pointer; touch-action: manipulation;
+  transition: left .7s cubic-bezier(.65,0,.35,1), background-color .2s;
+  border: 0; background: transparent; color: inherit; font: inherit; padding: 0 2%;
+}
+.side[data-pos="L"] { left: 0; }
+.side[data-pos="R"] { left: 50%; }
+.side:active { background: rgba(255,255,255,.07); }
+.who { display: flex; align-items: center; gap: 12px; max-width: 92%; }
+.avatar {
+  flex: none; width: calc(clamp(40px, 8.5vmin, 80px) * var(--name-scale)); height: calc(clamp(40px, 8.5vmin, 80px) * var(--name-scale));
+  border-radius: 50%; display: grid; place-items: center; overflow: hidden;
+  background: var(--card) center / cover no-repeat; border: 3px solid rgba(255,255,255,.85);
+  font-weight: 700; font-size: calc(clamp(18px, 3.6vmin, 34px) * var(--name-scale)); color: var(--ink);
+  box-shadow: 0 4px 14px rgba(0,0,0,.3);
+}
+.avatar.flag { background: #fff; font-size: calc(clamp(26px, 5.6vmin, 52px) * var(--name-scale)); line-height: 1; }
+.names { display: grid; min-width: 0; text-align: left; }
+.name {
+  font-size: calc(clamp(1.1rem, 3.8vmin, 2.5rem) * var(--name-scale)); font-weight: 700; letter-spacing: .03em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.25;
+}
+.name.sm { font-size: calc(clamp(.95rem, 2.9vmin, 1.9rem) * var(--name-scale)); }
+.name.serving::after { content: ""; display: inline-block; width: .45em; height: .45em; border-radius: 50%; background: var(--ball); margin-left: .35em; vertical-align: middle; }
+.name, .score { text-shadow: 0 2px 10px rgba(6,30,55,.5); }
+.score {
+  font-family: var(--font-num); font-weight: 700; line-height: .92;
+  font-size: calc(min(36vh, 21vw) * var(--score-scale)); font-variant-numeric: tabular-nums;
+}
+.score.bump { animation: bump .38s ease-out; }
+@keyframes bump { 35% { transform: scale(1.12); color: var(--ball); } }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; min-height: 2.1em; align-items: center; }
+.serve, .tag {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: clamp(.85rem, 2.3vmin, 1.25rem); font-weight: 500; padding: 5px 13px; border-radius: 999px; color: var(--muted);
+}
+.serve.on { background: var(--ball); color: var(--ball-ink); font-weight: 700; }
+.tag { font-weight: 700; letter-spacing: .06em; gap: 6px; }
+.tag small { font-size: .7em; letter-spacing: .12em; opacity: .8; }
+.k-game  { background: rgba(255,255,255,.94); color: #13314f; }
+.k-break { background: var(--alert); color: #fff; }
+.k-set, .k-match { background: var(--gold); color: #3b2800; }
+.tag.k-match, .moment.k-match { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 8px rgba(247,196,37,.25); } }
+.moment {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3; pointer-events: none;
+  display: grid; justify-items: center; gap: 1px; padding: 6px 24px 8px; border-radius: 14px; text-align: center;
+  box-shadow: 0 10px 30px rgba(0,0,0,.3); max-width: 70%;
+}
+.moment small { font-size: clamp(.62rem, 1.5vmin, .8rem); font-weight: 700; letter-spacing: .28em; opacity: .85; }
+.moment b { font-size: clamp(1rem, 3.2vmin, 1.7rem); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.moment.show { animation: dropIn .45s cubic-bezier(.2,1.4,.4,1) both; }
+.moment.k-match.show { animation: dropIn .45s cubic-bezier(.2,1.4,.4,1) both, pulse 1.2s .45s ease-in-out infinite; }
+@keyframes dropIn { from { opacity: 0; transform: translate(-50%, -14px) scale(.9); } }
+.ballicon { width: .95em; height: .95em; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #fff, #f2ff8a 60%); box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
+.games {
+  display: inline-flex; align-items: baseline; gap: 8px; background: var(--panel); border-radius: 12px; padding: 4px 16px;
+  font-size: clamp(.85rem, 2.2vmin, 1.1rem); color: var(--muted);
+}
+.games b { font-family: var(--font-num); font-size: 1.9em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.pill {
+  position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 3; pointer-events: none;
+  background: var(--panel); padding: 6px 18px; border-radius: 999px; white-space: nowrap;
+  font-weight: 600; font-size: clamp(.85rem, 2.2vmin, 1.15rem); max-width: 90%; overflow: hidden; text-overflow: ellipsis;
+}
+.pill em { font-style: normal; color: var(--ball); }
+
+/* ---------- overlays ---------- */
+.banner { position: absolute; inset: 0; display: grid; place-items: center; z-index: 5; pointer-events: none; }
+.banner div {
+  background: var(--ball); color: var(--ball-ink); text-align: center;
+  font-size: clamp(1.5rem, 5.5vmin, 3.4rem); font-weight: 700; letter-spacing: .12em;
+  padding: .45em 1.2em; border-radius: 16px; box-shadow: 0 18px 50px rgba(0,0,0,.35); max-width: 80%;
+  animation: pop 2s ease both;
+}
+@keyframes pop { 0% { opacity: 0; transform: scale(.7); } 12% { opacity: 1; transform: scale(1.04); } 20%, 82% { transform: scale(1); opacity: 1; } 100% { opacity: 0; transform: scale(.96); } }
+.modal {
+  position: fixed; inset: 0; z-index: 20; background: rgba(6,18,30,.72); backdrop-filter: blur(4px);
+  display: grid; place-items: center;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.card {
+  background: var(--card); border: 1px solid rgba(255,255,255,.14); border-radius: 18px; padding: 26px;
+  width: min(580px, 100%); box-sizing: border-box; display: grid; gap: 16px;
+  box-shadow: 0 30px 80px rgba(0,0,0,.45); max-height: 90vh; overflow: auto;
+}
+.card h2 { margin: 0; font-size: 1.45rem; text-wrap: balance; }
+.card p { margin: 0; color: var(--muted); line-height: 1.6; }
+.field { display: grid; gap: 6px; }
+.field > label, .legend { font-size: .85rem; color: var(--muted); letter-spacing: .06em; }
+input[type=text], select {
+  font: 500 1.05rem var(--font-text); color: var(--ink); background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.2); border-radius: 10px; padding: 9px 12px; min-width: 0;
+}
+select option { background: var(--card); }
+input[type=text]:focus, select:focus { outline: 2px solid var(--ball); outline-offset: 1px; }
+input[type=range] { accent-color: var(--ball); width: 100%; }
+.seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.seg label {
+  display: flex; align-items: center; justify-content: center; gap: 8px; text-align: center;
+  padding: 10px 8px; border-radius: 10px; cursor: pointer; font-size: .95rem;
+  background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.2);
+}
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label:has(input:checked) { border-color: var(--ball); background: color-mix(in srgb, var(--ball) 16%, transparent); font-weight: 700; }
+.seg label:has(input:disabled) { opacity: .4; }
+.swatch { width: 18px; height: 18px; border-radius: 5px; border: 2px solid #fff; }
+.row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: rgba(255,255,255,.06); padding: 5px; border-radius: 12px; }
+.tabs button { font: 600 1rem var(--font-text); color: var(--muted); background: none; border: 0; border-radius: 8px; padding: 9px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--ball); color: var(--ball-ink); }
+.pane { display: grid; gap: 16px; }
+.team { display: grid; gap: 10px; padding: 14px; border-radius: 12px; background: rgba(255,255,255,.05); }
+.team h3 { margin: 0; font-size: 1rem; }
+.av-edit { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.av-edit .avatar { width: 56px; height: 56px; font-size: 22px; }
+.av-edit .avatar.flag { font-size: 34px; }
+.av-edit select { flex: 1 1 140px; }
+.colors { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.colors label { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,.07); }
+input[type=color] { width: 44px; height: 32px; border: 0; background: none; padding: 0; cursor: pointer; }
+.check { display: flex; align-items: center; gap: 10px; }
+.check input { width: 20px; height: 20px; accent-color: var(--ball); }
+.note { font-size: .85rem; }
+
+/* win */
+.win { text-align: center; overflow: hidden; position: relative; animation: cardIn .6s cubic-bezier(.2,1.4,.4,1) both; }
+.win > * { position: relative; }
+.win::before {
+  content: ""; position: absolute; left: 50%; top: 70px; width: 520px; height: 520px; margin-left: -260px; margin-top: -260px;
+  background: repeating-conic-gradient(rgba(247,196,37,.16) 0 10deg, transparent 10deg 22deg);
+  -webkit-mask: radial-gradient(circle, #000 20%, transparent 62%); mask: radial-gradient(circle, #000 20%, transparent 62%);
+  animation: spin 18s linear infinite;
+}
+.win .row, .toss .row { justify-content: center; }
+.trophy { width: clamp(84px, 16vmin, 120px); margin: 0 auto -6px; filter: drop-shadow(0 8px 18px rgba(247,196,37,.45)); animation: trophyIn .9s .15s cubic-bezier(.2,1.6,.4,1) both; }
+.eyebrow { margin: 0; color: var(--gold) !important; font-weight: 700; letter-spacing: .3em; font-size: .85rem; }
+.goldtxt {
+  background: linear-gradient(100deg, #fff3b0, #f7c425 40%, #fff3b0 55%, #f0a818); background-size: 220% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent; animation: shine 2.6s linear infinite;
+}
+.final { font-family: var(--font-num); font-weight: 700; font-size: clamp(3rem, 12vmin, 6.5rem); line-height: 1; font-variant-numeric: tabular-nums; }
+.final.sets { font-size: clamp(2rem, 7vmin, 3.6rem); display: flex; gap: .6em; justify-content: center; flex-wrap: wrap; }
+.final sup { font-size: .45em; }
+.final small { display: block; font: 500 1rem var(--font-text); color: var(--muted); margin-top: 8px; width: 100%; }
+.next { background: rgba(255,255,255,.06); border-radius: 12px; padding: 14px 16px; display: grid; gap: 6px; line-height: 1.55; }
+.next b { color: var(--ball); }
+#confetti { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 30; pointer-events: none; }
+@keyframes cardIn { from { opacity: 0; transform: scale(.85) translateY(20px); } }
+@keyframes trophyIn { from { opacity: 0; transform: scale(.3) rotate(-18deg); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes shine { to { background-position: -220% 0; } }
+
+/* home menu */
+#homeModal { background: color-mix(in srgb, var(--card) 70%, rgba(6,18,30,.6)); }
+.home { width: min(860px, 100%); text-align: center; gap: 20px; }
+.home h1 { margin: 0; font-size: clamp(1.6rem, 4.5vmin, 2.4rem); letter-spacing: .06em; }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; text-align: left; }
+.mode { display: grid; gap: 12px; align-content: start; padding: 22px; border-radius: 16px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.16); }
+.mode .ico { font-family: var(--font-num); font-weight: 700; font-size: clamp(3rem, 9vmin, 4.6rem); line-height: 1; color: var(--ball); font-variant-numeric: tabular-nums; }
+.mode .ico small { font-size: .45em; color: var(--muted); margin-left: 8px; }
+.mode h3 { margin: 0; font-size: 1.4rem; }
+.mode p { font-size: .95rem; }
+.mode .go { padding: 14px; font-size: 1.1rem; }
+.mode .seg label { padding: 8px; }
+.linkbtn { background: none; border: 0; color: var(--ball); font: 600 .95rem var(--font-text); cursor: pointer; padding: 4px 0; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
+.resume { display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap; background: rgba(255,255,255,.06); border-radius: 12px; padding: 10px 14px; }
+@media (max-width: 640px) { .modes { grid-template-columns: 1fr; } }
+
+/* coin toss */
+.toss { text-align: center; }
+.coin-stage { position: relative; height: 200px; perspective: 900px; display: grid; place-items: end center; }
+.coin-air { position: relative; width: 130px; height: 130px; margin-bottom: 26px; }
+.coin { position: absolute; inset: 0; transform-style: preserve-3d; }
+.face {
+  position: absolute; inset: 0; border-radius: 50%; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  display: grid; place-content: center; gap: 2px;
+  background: radial-gradient(circle at 35% 30%, #fff6c8, #f2c230 45%, #b9800c 100%);
+  box-shadow: inset 0 0 0 6px rgba(255,240,170,.55), inset 0 0 0 9px rgba(140,90,5,.45), 0 4px 0 #8a5b06; color: #5c3b02;
+}
+.face b { font-size: 3rem; line-height: 1; font-weight: 700; }
+.face span { font-size: .8rem; font-weight: 700; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.face.back { transform: rotateX(180deg); background: radial-gradient(circle at 35% 30%, #f4f6f8, #c3ccd4 45%, #7d8892 100%); color: #2c3640;
+  box-shadow: inset 0 0 0 6px rgba(255,255,255,.55), inset 0 0 0 9px rgba(60,70,80,.4), 0 4px 0 #59626b; }
+.coin-shadow { position: absolute; bottom: 10px; left: 50%; width: 120px; height: 18px; margin-left: -60px; border-radius: 50%; background: rgba(0,0,0,.4); filter: blur(4px); }
+.coin-air.fly { animation: fly 2s cubic-bezier(.3,.6,.4,1) both; }
+.coin-shadow.fly { animation: shadow 2s cubic-bezier(.3,.6,.4,1) both; }
+@keyframes fly { 0% { transform: translateY(0); } 42% { transform: translateY(-150px) scale(1.12); } 82% { transform: translateY(0); } 89% { transform: translateY(-16px); } 95%, 100% { transform: translateY(0); } }
+@keyframes shadow { 0% { transform: scale(1); opacity: 1; } 42% { transform: scale(.45); opacity: .35; } 82%, 100% { transform: scale(1); opacity: 1; } }
+.toss-msg { font-size: 1.1rem; color: var(--ink) !important; min-height: 1.6em; }
+.toss-msg strong { color: var(--ball); }
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.choices > .btn:only-child { grid-column: 1 / -1; justify-self: center; min-width: 200px; }
+.choices .btn { padding: 14px 12px; font-size: 1.05rem; }
+.choices .btn small { display: block; font-size: .75rem; opacity: .75; font-weight: 400; margin-top: 2px; }
+.summary { grid-column: 1 / -1; background: rgba(255,255,255,.06); border-radius: 12px; padding: 12px 16px; line-height: 1.7; text-align: left; }
+.summary b { color: var(--ball); }
+
+@media (max-width: 760px) {
+  .btn { padding: 8px 11px; font-size: .85rem; }
+  .bug { font-size: 1rem; }
+  .bug .bn { max-width: 6em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .side { transition: none; }
+  .score.bump, .banner div, .win, .trophy { animation-duration: .01s; }
+  .win::before, .goldtxt, .coin-air.fly, .coin-shadow.fly { animation: none; }
+}
+</style>
+
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="title">
+      <b id="fmtTitle">三盤兩勝</b>
+      <div class="sub"><span id="setInfo"></span>
+        <span class="clock" id="clock"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5V8l2.5 1.6"/></svg><span id="clockTxt">0:00</span></span>
+      </div>
+    </div>
+    <table class="bug" id="bug" aria-label="比分"></table>
+    <div class="tools">
+      <button class="btn" id="homeBtn" type="button">主選單</button>
+      <button class="btn" id="undo" type="button">復原</button>
+      <button class="btn" id="mute" type="button">音效：開</button>
+      <button class="btn" id="setup" type="button">設定</button>
+      <button class="btn" id="fs" type="button">全螢幕</button>
+    </div>
+  </header>
+
+  <main class="court" id="court">
+    <svg class="court-art" viewBox="3.2 2.2 30.17 13.89" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <filter id="grain" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="3.2" numOctaves="2" seed="7" result="n"/>
+          <feColorMatrix in="n" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .09 0"/>
+          <feComposite in2="SourceGraphic" operator="in"/>
+        </filter>
+        <radialGradient id="light" cx="50%" cy="40%" r="70%">
+          <stop offset="0" stop-color="#ffffff" stop-opacity=".10"/>
+          <stop offset="1" stop-color="#000000" stop-opacity=".14"/>
+        </radialGradient>
+        <pattern id="mesh" width=".09" height=".09" patternUnits="userSpaceOnUse">
+          <rect width=".09" height=".09" fill="#0f1a24"/>
+          <path d="M0 0H.09M0 0V.09" stroke="#e9eef2" stroke-width=".012" opacity=".55"/>
+        </pattern>
+        <radialGradient id="worn">
+          <stop offset="0" stop-color="#b39462" stop-opacity="1"/>
+          <stop offset=".55" stop-color="#a68a55" stop-opacity=".85"/>
+          <stop offset=".8" stop-color="#8d8a4a" stop-opacity=".35"/>
+          <stop offset="1" stop-color="#7d8a3e" stop-opacity="0"/>
+        </radialGradient>
+        <filter id="soft" x="-50%" y="-5%" width="200%" height="110%"><feGaussianBlur stdDeviation=".12"/></filter>
+      </defs>
+      <rect class="runoff" x="3.4" y="2.35" width="29.77" height="13.59"/>
+      <rect class="surf" x="6.4" y="3.66" width="23.77" height="10.97"/>
+      <g class="stripes" fill="#0b2a08" fill-opacity=".16"><rect x="3.400" y="2.35" width="0.605" height="13.59"/><rect x="5.195" y="2.35" width="1.190" height="13.59"/><rect x="7.575" y="2.35" width="1.190" height="13.59"/><rect x="9.955" y="2.35" width="1.190" height="13.59"/><rect x="12.335" y="2.35" width="1.190" height="13.59"/><rect x="14.715" y="2.35" width="1.190" height="13.59"/><rect x="17.095" y="2.35" width="1.190" height="13.59"/><rect x="19.475" y="2.35" width="1.190" height="13.59"/><rect x="21.855" y="2.35" width="1.190" height="13.59"/><rect x="24.235" y="2.35" width="1.190" height="13.59"/><rect x="26.615" y="2.35" width="1.190" height="13.59"/><rect x="28.995" y="2.35" width="1.190" height="13.59"/><rect x="31.375" y="2.35" width="1.190" height="13.59"/></g>
+      <g class="wear">
+        <ellipse cx="7.0" cy="9.145" rx="1.7" ry="1.6" fill="url(#worn)"/>
+        <ellipse cx="29.57" cy="9.145" rx="1.7" ry="1.6" fill="url(#worn)"/>
+        <ellipse cx="5.6" cy="9.145" rx="1.6" ry="2.9" fill="url(#worn)" opacity=".9"/>
+        <ellipse cx="30.97" cy="9.145" rx="1.6" ry="2.9" fill="url(#worn)" opacity=".9"/>
+        <ellipse cx="11.9" cy="9.145" rx="1.1" ry=".9" fill="url(#worn)" opacity=".35"/>
+        <ellipse cx="24.67" cy="9.145" rx="1.1" ry=".9" fill="url(#worn)" opacity=".35"/>
+      </g>
+      <rect x="3.4" y="2.35" width="29.77" height="13.59" fill="url(#light)"/>
+      <rect x="3.4" y="2.35" width="29.77" height="13.59" fill="#fff" filter="url(#grain)"/>
+      <g fill="none" stroke="#f7fafc" stroke-width="3" stroke-linecap="square">
+        <rect vector-effect="non-scaling-stroke" x="6.4" y="3.66" width="23.77" height="10.97" stroke-width="4"/>
+        <path vector-effect="non-scaling-stroke" d="M6.4 5.03H30.17M6.4 13.26H30.17"/>
+        <path vector-effect="non-scaling-stroke" d="M11.885 5.03V13.26M24.685 5.03V13.26"/>
+        <path vector-effect="non-scaling-stroke" d="M11.885 9.145H24.685"/>
+        <path vector-effect="non-scaling-stroke" d="M6.4 9.145H6.65M29.92 9.145H30.17"/>
+      </g>
+      <rect x="18.38" y="2.75" width=".42" height="12.79" fill="#04121f" opacity=".35" filter="url(#soft)"/>
+      <rect x="18.2" y="2.75" width=".17" height="12.79" fill="url(#mesh)"/>
+      <rect x="18.22" y="2.75" width=".13" height="12.79" fill="none" stroke="#f7fafc" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      <rect x="18.255" y="8.9" width=".06" height=".5" fill="#f7fafc"/>
+      <rect x="18.16" y="2.55" width=".25" height=".22" rx=".05" fill="#1c2b22" stroke="#f7fafc" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+      <rect x="18.16" y="15.52" width=".25" height=".22" rx=".05" fill="#1c2b22" stroke="#f7fafc" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <button class="side" type="button" data-team="0" data-pos="L">
+      <div class="who"><div class="avatar"></div><div class="names"><div class="name n1"></div><div class="name n2 sm"></div></div></div>
+      <div class="score">0</div>
+      <div class="chips"><span class="serve"></span><span class="tag" hidden></span></div>
+      <div class="games"><span>局數</span><b>0</b></div>
+    </button>
+    <button class="side" type="button" data-team="1" data-pos="R">
+      <div class="who"><div class="avatar"></div><div class="names"><div class="name n1"></div><div class="name n2 sm"></div></div></div>
+      <div class="score">0</div>
+      <div class="chips"><span class="serve"></span><span class="tag" hidden></span></div>
+      <div class="games"><span>局數</span><b>0</b></div>
+    </button>
+    <div class="moment" id="moment" hidden><small id="momentEn"></small><b id="momentTxt"></b></div>
+    <div class="pill" id="pill" aria-live="polite"></div>
+    <div class="banner" id="banner" hidden><div id="bannerTxt">交換場地</div></div>
+  </main>
+</div>
+
+<!-- home menu -->
+<div class="modal" id="homeModal" hidden>
+  <div class="card home">
+    <p class="eyebrow">TENNIS SCOREBOARD</p>
+    <h1>網球計分板</h1>
+    <div class="resume" id="resume" hidden>
+      <span id="resumeTxt"></span>
+      <button class="btn primary" type="button" id="resumeBtn">繼續目前比賽</button>
+    </div>
+    <div class="modes">
+      <div class="mode">
+        <div class="ico" id="tbIco">7<small>分</small></div>
+        <h3>搶七決勝局</h3>
+        <p>只打一局決勝。先得 7 分（搶十為 10 分）且領先 2 分獲勝，每 6 分換邊。</p>
+        <div class="seg">
+          <label><input type="radio" name="tbfmt" value="tb7">搶七</label>
+          <label><input type="radio" name="tbfmt" value="tb10">搶十</label>
+        </div>
+        <button class="btn primary go" type="button" data-go="tb">開始搶七</button>
+      </div>
+      <div class="mode">
+        <div class="ico">6–4<small>7–6</small></div>
+        <h3>正式比賽</h3>
+        <p id="matchSummary"></p>
+        <button class="linkbtn" type="button" id="homeFormat">更改賽制</button>
+        <button class="btn primary go" type="button" data-go="match">開始比賽</button>
+      </div>
+    </div>
+    <div class="row" style="justify-content:center">
+      <button class="btn" type="button" id="homePlayers">設定選手與外觀</button>
+      <button class="btn" type="button" id="homeDemo">觀看搶七示範</button>
+    </div>
+  </div>
+</div>
+
+<!-- coin toss -->
+<div class="modal" id="tossModal" hidden>
+  <div class="card toss">
+    <p class="eyebrow">賽前擲硬幣</p>
+    <h2 id="tossTitle">擲硬幣決定發球與場地</h2>
+    <div class="coin-stage">
+      <div class="coin-shadow" id="coinShadow"></div>
+      <div class="coin-air" id="coinAir">
+        <div class="coin" id="coin">
+          <div class="face front"><b>正</b><span id="faceA"></span></div>
+          <div class="face back"><b>反</b><span id="faceB"></span></div>
+        </div>
+      </div>
+    </div>
+    <p class="toss-msg" id="tossMsg"></p>
+    <div class="choices" id="tossChoices"></div>
+    <div class="row"><button class="btn" type="button" id="tossSkip">略過，直接開始</button></div>
+  </div>
+</div>
+
+<!-- settings -->
+<div class="modal" id="setupModal" hidden>
+  <form class="card" id="setupForm" autocomplete="off">
+    <h2>設定</h2>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="match" aria-selected="true">比賽</button>
+      <button type="button" role="tab" data-tab="players" aria-selected="false">選手</button>
+      <button type="button" role="tab" data-tab="look" aria-selected="false">外觀</button>
+    </div>
+
+    <div class="pane" data-pane="match">
+      <div class="field"><span class="legend">正式比賽賽制（只打搶七請從主選單選）</span>
+        <div class="seg">
+          <label><input type="radio" name="format" value="set1">一盤決勝</label>
+          <label><input type="radio" name="format" value="bo3">三盤兩勝</label>
+          <label><input type="radio" name="format" value="bo5">五盤三勝</label>
+        </div>
+      </div>
+      <div class="field"><span class="legend">單打／雙打</span>
+        <div class="seg">
+          <label><input type="radio" name="mode" value="s">單打</label>
+          <label><input type="radio" name="mode" value="d">雙打</label>
+        </div>
+      </div>
+      <div class="field"><span class="legend">平分時</span>
+        <div class="seg">
+          <label><input type="radio" name="deuce" value="ad">占先制（要連贏 2 分）</label>
+          <label><input type="radio" name="deuce" value="noad">無占先（金球，1 分決勝）</label>
+        </div>
+      </div>
+      <div class="field"><span class="legend">決勝盤</span>
+        <div class="seg">
+          <label><input type="radio" name="final" value="normal">一般盤（6:6 搶七）</label>
+          <label><input type="radio" name="final" value="mtb">以搶十取代</label>
+        </div>
+      </div>
+      <p class="note">更改賽制或單雙打，按「開始新比賽」才會生效，比分會歸零。</p>
+      <div class="row" style="justify-content:flex-start">
+        <button class="btn" type="button" id="tossBtn">擲硬幣</button>
+        <button class="btn" type="button" id="demoBtn">播放搶七示範</button>
+      </div>
+    </div>
+
+    <div class="pane" data-pane="players" hidden>
+      <div class="team">
+        <h3>選手 A</h3>
+        <div class="field"><label for="n00" class="lab1">名字</label><input type="text" id="n00" maxlength="16"></div>
+        <div class="field dbl"><label for="n01">隊友（第二發球員）</label><input type="text" id="n01" maxlength="16"></div>
+        <div class="av-edit">
+          <div class="avatar" id="av0"></div>
+          <label class="btn">上傳照片<input type="file" accept="image/*" id="photo0" hidden></label>
+          <select id="flag0" aria-label="選手 A 國旗"></select>
+          <button class="btn" type="button" id="clr0">清除</button>
+        </div>
+      </div>
+      <div class="team">
+        <h3>選手 B</h3>
+        <div class="field"><label for="n10" class="lab1">名字</label><input type="text" id="n10" maxlength="16"></div>
+        <div class="field dbl"><label for="n11">隊友（第二發球員）</label><input type="text" id="n11" maxlength="16"></div>
+        <div class="av-edit">
+          <div class="avatar" id="av1"></div>
+          <label class="btn">上傳照片<input type="file" accept="image/*" id="photo1" hidden></label>
+          <select id="flag1" aria-label="選手 B 國旗"></select>
+          <button class="btn" type="button" id="clr1">清除</button>
+        </div>
+      </div>
+      <p class="note">名字和照片會馬上更新，不影響比分。照片只存在這台平板的瀏覽器。</p>
+    </div>
+
+    <div class="pane" data-pane="look" hidden>
+      <div class="field"><span class="legend">球場</span>
+        <div class="seg">
+          <label><input type="radio" name="surface" value="hard"><span class="swatch" style="background:#1f5b93"></span>硬地</label>
+          <label><input type="radio" name="surface" value="clay"><span class="swatch" style="background:#c4643a"></span>紅土</label>
+          <label><input type="radio" name="surface" value="grass"><span class="swatch" style="background:#5c9e37"></span>草地</label>
+        </div>
+      </div>
+      <div class="field"><span class="legend">字體</span>
+        <div class="seg">
+          <label><input type="radio" name="font" value="modern">現代黑體</label>
+          <label><input type="radio" name="font" value="classic">經典明體</label>
+          <label><input type="radio" name="font" value="round">手寫楷體</label>
+        </div>
+      </div>
+      <div class="field"><label for="nameSize">名字大小</label><input type="range" id="nameSize" min="0.7" max="1.6" step="0.05"></div>
+      <div class="field"><label for="scoreSize">分數大小</label><input type="range" id="scoreSize" min="0.6" max="1.3" step="0.05"></div>
+      <div class="field"><span class="legend">配色（可配合你的網站）</span>
+        <div class="colors">
+          <label for="accent">主色<input type="color" id="accent"></label>
+          <label for="cardColor">介面底色<input type="color" id="cardColor"></label>
+        </div>
+      </div>
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <label class="check"><input type="checkbox" id="showTimer">顯示比賽時間</label>
+        <button class="btn" type="button" id="resetColors">恢復預設配色</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <button class="btn" type="button" id="closeSetup">關閉</button>
+      <button class="btn primary" type="submit">開始新比賽</button>
+    </div>
+  </form>
+</div>
+
+<canvas id="confetti" hidden></canvas>
+<div class="modal" id="winModal" hidden>
+  <div class="card win">
+    <div class="trophy" aria-hidden="true">
+      <svg viewBox="0 0 64 64">
+        <defs><linearGradient id="goldg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff3b0"/><stop offset=".45" stop-color="#f7c425"/><stop offset="1" stop-color="#b9780a"/></linearGradient></defs>
+        <path d="M18 12H9v4c0 7 5 11 11 11M46 12h9v4c0 7-5 11-11 11" fill="none" stroke="url(#goldg)" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M17 7h30v14c0 10-7 17-15 17S17 31 17 21z" fill="url(#goldg)"/>
+        <path d="M23 12v8c0 5 3 9 7 10" fill="none" stroke="#fff8d6" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+        <rect x="29" y="37" width="6" height="9" fill="url(#goldg)"/>
+        <rect x="21" y="46" width="22" height="5" rx="1.5" fill="url(#goldg)"/>
+        <rect x="17" y="51" width="30" height="7" rx="2" fill="#7a4e08"/>
+        <circle cx="32" cy="20" r="5.5" fill="#dcf04b" stroke="#fff" stroke-width="1"/>
+        <path d="M27.5 17.5c2.5 1.8 2.5 3.2 0 5M36.5 17.5c-2.5 1.8-2.5 3.2 0 5" fill="none" stroke="#fff" stroke-width="1"/>
+      </svg>
+    </div>
+    <p class="eyebrow" id="winEyebrow">冠軍</p>
+    <h2 id="winTitle"></h2>
+    <div class="final" id="winScore"></div>
+    <div class="next" id="winNext"></div>
+    <div class="row">
+      <button class="btn" type="button" id="winUndo">復原最後一分</button>
+      <button class="btn primary" type="button" id="winNew">新比賽</button>
+    </div>
+  </div>
+</div>
+
+<script>
+if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+</script>
+<script>
+(() => {
+  const KEY = 'tennis-score-v2';
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  const FORMATS = {
+    tb7:  { label: '搶七決勝局', short: '搶七', tbOnly: 7,  sets: 1 },
+    tb10: { label: '搶十決勝局', short: '搶十', tbOnly: 10, sets: 1 },
+    set1: { label: '一盤決勝', sets: 1 },
+    bo3:  { label: '三盤兩勝', sets: 2 },
+    bo5:  { label: '五盤三勝', sets: 3 }
+  };
+  const SURFACES = {
+    hard:  { surface: '#1f5b93', runoff: '#2f6e4f', surround: '#2f6e4f', stripes: 0, wear: 0 },
+    clay:  { surface: '#c4643a', runoff: '#bd5d35', surround: '#a9542f', stripes: 0, wear: 0 },
+    grass: { surface: '#5c9e37', runoff: '#5c9e37', surround: '#1b4226', stripes: 1, wear: 1 }  // Wimbledon-style lawn, dark green backdrop
+  };
+  const FONTS = {
+    modern:  { num: '"Barlow Condensed"', text: '"Noto Sans TC"', q: 'family=Barlow+Condensed:wght@500;600;700&family=Noto+Sans+TC:wght@400;500;700' },
+    classic: { num: '"Oswald"', text: '"Noto Serif TC"', q: 'family=Oswald:wght@500;600;700&family=Noto+Serif+TC:wght@500;700' },
+    round:   { num: '"Fredoka"', text: '"LXGW WenKai TC"', q: 'family=Fredoka:wght@500;600;700&family=LXGW+WenKai+TC:wght@400;700' }
+  };
+  const DEFAULT_COLORS = { accent: '#dcf04b', card: '#0e2740' };
+  const FLAGS = [['TW','台灣'],['JP','日本'],['KR','韓國'],['CN','中國'],['HK','香港'],['SG','新加坡'],['MY','馬來西亞'],['TH','泰國'],['VN','越南'],['PH','菲律賓'],['ID','印尼'],['IN','印度'],
+    ['US','美國'],['CA','加拿大'],['GB','英國'],['FR','法國'],['DE','德國'],['ES','西班牙'],['IT','義大利'],['CH','瑞士'],['RS','塞爾維亞'],['NL','荷蘭'],['PL','波蘭'],['NO','挪威'],['DK','丹麥'],['GR','希臘'],
+    ['CZ','捷克'],['HR','克羅埃西亞'],['AU','澳洲'],['NZ','紐西蘭'],['AR','阿根廷'],['BR','巴西'],['CL','智利'],['ZA','南非']];
+  const flagEmoji = c => c.replace(/./g, ch => String.fromCodePoint(127397 + ch.charCodeAt(0)));
+
+  const defaults = () => ({
+    v: 2,
+    cfg: { mode: 'match', tbFormat: 'tb7', matchFormat: 'bo3', doubles: false, noAd: false, final: 'normal',
+           surface: 'hard', font: 'modern', nameSize: 1, scoreSize: 1, accent: DEFAULT_COLORS.accent, card: DEFAULT_COLORS.card, showTimer: true },
+    names: [['選手 A', '隊友 A'], ['選手 B', '隊友 B']],
+    avatar: [null, null],
+    first: 0, startLeft: 0, tossed: false, pts: [], t0: null, t1: null, muted: false
+  });
+  let st = defaults();
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s && s.v === 2) {
+      st = Object.assign(st, s); st.cfg = Object.assign(defaults().cfg, s.cfg);
+      const old = st.cfg.format; delete st.cfg.format; // older save: one combined format field
+      if (old) { if (old.startsWith('tb')) { st.cfg.mode = 'tb'; st.cfg.tbFormat = old; } else { st.cfg.mode = 'match'; st.cfg.matchFormat = old; } }
+    }
+  } catch (e) {}
+  let demo = null;
+  const save = () => { if (demo) return; try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} };
+
+  const fmt = () => st.cfg.mode === 'tb' ? st.cfg.tbFormat : st.cfg.matchFormat;
+  const teamName = i => st.cfg.doubles ? st.names[i][0] + ' / ' + st.names[i][1] : st.names[i][0];
+
+  /* ---------- rules engine: everything is replayed from the list of point winners ---------- */
+  function sim(pts) {
+    const cfg = st.cfg, F = FORMATS[fmt()], first = st.first;
+    const S = { sets: [], setsWon: [0, 0], games: [0, 0], p: [0, 0], inTB: false, tbTarget: 7, mtb: false, gameIdx: 0, flips: 0, winner: null, ev: {} };
+    const startSet = () => {
+      S.games = [0, 0]; S.p = [0, 0];
+      if (F.tbOnly) { S.inTB = true; S.tbTarget = F.tbOnly; S.mtb = true; return; }
+      const deciding = F.sets > 1 && S.setsWon[0] === F.sets - 1 && S.setsWon[1] === F.sets - 1;
+      S.mtb = deciding && cfg.final === 'mtb'; S.inTB = S.mtb; S.tbTarget = S.mtb ? 10 : 7;
+    };
+    const endSet = (w, tb) => {
+      let g = S.games.slice();
+      if (F.tbOnly) g = w === 0 ? [7, 6] : [6, 7];
+      else if (S.mtb) g = w === 0 ? [1, 0] : [0, 1];
+      S.sets.push({ g, tb, mtb: S.mtb && !F.tbOnly });
+      S.setsWon[w]++; S.ev.set = true;
+      if (S.setsWon[w] === F.sets) { S.winner = w; return; }
+      // change ends after a set only when its game total is odd
+      if (!S.mtb && (S.games[0] + S.games[1]) % 2 === 1) { S.flips++; S.ev.change = true; }
+      startSet();
+    };
+    startSet();
+    for (const w of pts) {
+      if (S.winner !== null) break;
+      S.ev = {};
+      const l = 1 - w;
+      S.p[w]++;
+      if (S.inTB) {
+        const n = S.p[0] + S.p[1];
+        if (S.p[w] >= S.tbTarget && S.p[w] - S.p[l] >= 2) {
+          const tb = S.p.slice();
+          S.gameIdx++; S.ev.game = true;
+          if (!S.mtb) S.games[w]++;
+          endSet(w, tb);
+        } else if (n % 6 === 0) { S.flips++; S.ev.change = true; }
+      } else if (S.p[w] >= 4 && (cfg.noAd || S.p[w] - S.p[l] >= 2)) {
+        S.p = [0, 0]; S.games[w]++; S.gameIdx++; S.ev.game = true;
+        const gw = S.games[w], gl = S.games[l];
+        if (gw >= 6 && gw - gl >= 2) endSet(w, null);
+        else {
+          if ((gw + gl) % 2 === 1) { S.flips++; S.ev.change = true; }
+          if (gw === 6 && gl === 6) { S.inTB = true; S.tbTarget = 7; }
+        }
+      }
+    }
+    // who serves the next point (a tie-break continues the game rotation, then 1 point, 2 each)
+    const n = S.p[0] + S.p[1];
+    const r = S.inTB ? S.gameIdx + (n === 0 ? 0 : Math.floor((n + 1) / 2)) : S.gameIdx;
+    if (cfg.doubles) {
+      const order = [[first, 0], [1 - first, 0], [first, 1], [1 - first, 1]];
+      [S.serveTeam, S.servePlayer] = order[r % 4];
+    } else { S.serveTeam = r % 2 === 0 ? first : 1 - first; S.servePlayer = 0; }
+    S.court = n % 2 === 0 ? '右區' : '左區';
+    if (!S.inTB && cfg.noAd && S.p[0] === 3 && S.p[1] === 3) S.court = '接發方選區';
+    S.flipped = S.flips % 2 === 1;
+    S.F = F;
+    return S;
+  }
+  function pointLabels(S) {
+    if (S.inTB) return [String(S.p[0]), String(S.p[1])];
+    const [a, b] = S.p, m = ['0', '15', '30', '40'];
+    if (a >= 3 && b >= 3) return a === b ? ['40', '40'] : (a > b ? ['AD', '40'] : ['40', 'AD']);
+    return [m[a], m[b]];
+  }
+  // Key point for team t: winning the next point would win the game / set / match.
+  // count = how many such chances in a row (e.g. 40-0 is a triple game point).
+  const KP = {
+    game:  { zh: '局末點', en: 'GAME POINT', rank: 1 },
+    break: { zh: '破發點', en: 'BREAK POINT', rank: 2 },
+    set:   { zh: '盤末點', en: 'SET POINT', rank: 3 },
+    match: { zh: '賽末點', en: 'MATCH POINT', rank: 4 }
+  };
+  function keyPoint(S, t) {
+    if (S.winner !== null) return null;
+    const R = sim(st.pts.concat(t));
+    if (R.gameIdx === S.gameIdx && R.winner === null) return null;
+    const receiver = !S.inTB && S.serveTeam !== t;
+    let kind = R.winner === t ? (S.F.tbOnly === 7 ? 'set' : 'match') : R.setsWon[t] > S.setsWon[t] ? 'set' : receiver ? 'break' : 'game';
+    let count = 0; const seq = st.pts.slice();
+    while (count < 10) {
+      const W = sim(seq.concat(t));
+      if (W.gameIdx === S.gameIdx && W.winner === null) break;
+      count++; seq.push(1 - t);
+      const L = sim(seq);
+      if (L.gameIdx !== S.gameIdx || L.winner !== null) break;
+    }
+    return { kind, count, alsoBreak: receiver && (kind === 'set' || kind === 'match') };
+  }
+
+
+  /* ---------- sound (Web Audio synth, starts after first tap) ---------- */
+  let ac = null, out = null, noise = null;
+  function ctx() {
+    if (!ac) {
+      try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
+      const comp = ac.createDynamicsCompressor(); comp.threshold.value = -12; comp.ratio.value = 4; comp.connect(ac.destination);
+      out = ac.createBiquadFilter(); out.type = 'lowpass'; out.frequency.value = 7000; out.connect(comp); // warm, no harsh highs
+      noise = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+      const ch = noise.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
+    }
+    if (ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  const on = () => { const a = ctx(); return a && !st.muted ? a : null; };
+  function env(a, t, peak, attack, decay, dest = out) {
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+    g.connect(dest); return g;
+  }
+  function burst(a, t, { freq = 1500, q = 1, type = 'bandpass', peak = .5, attack = .002, decay = .05, dest = out } = {}) {
+    const src = a.createBufferSource(); src.buffer = noise;
+    const f = a.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    src.connect(f).connect(env(a, t, peak, attack, decay, dest)); src.start(t, Math.random()); src.stop(t + attack + decay + .05);
+  }
+  function osc(a, t, f0, f1, dur, peak, type = 'sine') {
+    const o = a.createOscillator(); o.type = type;
+    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    o.connect(env(a, t, peak, .002, dur)); o.start(t); o.stop(t + dur + .05);
+  }
+  function tone(freq, start, dur, type = 'sine', vol = .25) {
+    const a = on(); if (!a) return; const t = a.currentTime + start;
+    const o = a.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t);
+    o.connect(env(a, t, vol, .015, dur)); o.start(t); o.stop(t + dur + .05);
+  }
+  // A clean sweet-spot hit: a soft felt "tock", the ball's hollow body and a faint string ping.
+  function hit(start = 0, power = 1) {
+    const a = on(); if (!a) return; const t = a.currentTime + start;
+    burst(a, t, { freq: 1800, q: 2, peak: .1 * power, decay: .008 });
+    osc(a, t, 560, 400, .075, .34 * power);
+    osc(a, t, 1150, 1080, .05, .09 * power, 'triangle');
+    osc(a, t, 160, 105, .06, .14 * power);
+  }
+  function bounce(start, power = 1) {
+    const a = on(); if (!a) return; const t = a.currentTime + start;
+    burst(a, t, { freq: 900, q: 2, peak: .04 * power, decay: .006 });
+    osc(a, t, 480, 360, .05, .14 * power); osc(a, t, 140, 100, .05, .08 * power);
+  }
+  // Stadium crowd: dozens of voices shouting through vowel formants, a noise roar, hand claps and a couple of whistles.
+  function crowd(start, dur, vol) {
+    const a = on(); if (!a) return; const t0 = a.currentTime + start, end = t0 + dur;
+    const bus = a.createGain();
+    bus.gain.setValueAtTime(.0001, t0); bus.gain.exponentialRampToValueAtTime(vol, t0 + .35);
+    bus.gain.setValueAtTime(vol, t0 + dur * .5); bus.gain.exponentialRampToValueAtTime(.0001, end);
+    bus.connect(out);
+    const formants = [[750, 5, 1], [1250, 6, .7], [2600, 8, .25]].map(([f, q, g]) => {
+      const bp = a.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q;
+      const gg = a.createGain(); gg.gain.value = g; bp.connect(gg).connect(bus); return bp;
+    });
+    const V = 30;
+    for (let i = 0; i < V; i++) {
+      const o = a.createOscillator(); o.type = 'sawtooth';
+      const base = 120 + Math.random() * 280, ts = t0 + Math.random() * .35;
+      o.frequency.setValueAtTime(base * .85, ts);
+      o.frequency.linearRampToValueAtTime(base * (1.1 + Math.random() * .15), ts + .4 + Math.random() * .5);
+      o.frequency.linearRampToValueAtTime(base * (.9 + Math.random() * .1), end);
+      const lfo = a.createOscillator(), lg = a.createGain();
+      lfo.frequency.value = 4 + Math.random() * 3; lg.gain.value = base * .025; lfo.connect(lg).connect(o.frequency);
+      const vg = a.createGain(); vg.gain.value = (.4 + Math.random() * .6) / V * 2.2;
+      o.connect(vg); formants.forEach(f => vg.connect(f));
+      o.start(ts); lfo.start(ts); o.stop(end + .1); lfo.stop(end + .1);
+    }
+    const src = a.createBufferSource(); src.buffer = noise; src.loop = true;
+    const nf = a.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 600; nf.Q.value = .5;
+    const ng = a.createGain(); ng.gain.value = .45;
+    src.connect(nf).connect(ng).connect(bus); src.start(t0); src.stop(end + .1);
+    const n = Math.round(dur * 110);
+    for (let i = 0; i < n; i++) {
+      const tt = t0 + .1 + Math.random() * dur * .9, fade = 1 - Math.pow((tt - t0) / dur, 2);
+      burst(a, tt, { freq: 900 + Math.random() * 1600, q: 1.6, peak: vol * .55 * (.4 + Math.random() * .6) * fade, decay: .02 + Math.random() * .03 });
+    }
+    [[.7, 2200, 2900], [1.5, 2500, 3100]].forEach(([d, f0, f1]) => {
+      if (d > dur * .7) return;
+      const o = a.createOscillator(); o.type = 'sine';
+      const t = t0 + d; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + .35);
+      o.frequency.exponentialRampToValueAtTime(f0 * 1.05, t + .6);
+      o.connect(env(a, t, vol * .12, .04, .55)); o.start(t); o.stop(t + .7);
+    });
+  }
+  const sfx = {
+    point() { hit(0); bounce(.27); },
+    game() { hit(0); bounce(.27); tone(988, .45, .3, 'sine', .05); tone(1319, .56, .4, 'sine', .05); },
+    change() { hit(0); bounce(.27); [784, 988, 1175, 1568].forEach((f, i) => tone(f, .45 + i * .11, .35, 'sine', .06)); },
+    set() { hit(0); bounce(.27); crowd(.35, 2.4, .3); },
+    win() {
+      hit(0, 1.1); bounce(.27);
+      crowd(.3, 5, .55);
+      [[523, 0], [659, .14], [784, .28], [1047, .42], [784, .62], [1047, .76]].forEach(([f, d], i) => tone(f, .6 + d, i === 5 ? 1 : .24, 'triangle', .05));
+    },
+    alert(rank) { const n = rank >= 3 ? [659, 880, 659, 880] : [587, 784]; n.forEach((f, i) => tone(f, .55 + i * .13, .22, 'sine', rank >= 3 ? .06 : .045)); },
+    undo() { tone(523, 0, .15, 'sine', .12); tone(392, .08, .2, 'sine', .12); },
+    coinFlip() {
+      tone(2900, 0, .45, 'sine', .08); tone(4350, 0, .3, 'sine', .04);
+      for (let i = 0; i < 9; i++) tone(2400 + (i % 2) * 300, .12 + i * .14, .05, 'sine', .015);
+      [[1.68, .2], [1.82, .12], [1.92, .07], [1.98, .04]].forEach(([d, v]) => {
+        const a = on(); if (!a) return; burst(a, a.currentTime + d, { freq: 5200, q: 3, peak: v * .6, decay: .015 });
+        tone(3300, d, .25, 'sine', v); tone(5100, d, .18, 'sine', v * .5);
+      });
+    },
+    tossWin() { [784, 1047, 1319].forEach((f, i) => tone(f, i * .09, .4, 'sine', .09)); }
+  };
+
+  /* ---------- confetti ---------- */
+  const cv = $('#confetti'), c2 = cv.getContext('2d');
+  const COLORS = ['#dcf04b', '#ffffff', '#ffcf3d', '#ff6b8a', '#4fd1ff', '#7cf29a', '#b48cff', '#ff9d3d'];
+  let parts = [], raf = 0;
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function sizeCanvas() { const r = devicePixelRatio || 1; cv.width = innerWidth * r; cv.height = innerHeight * r; c2.setTransform(r, 0, 0, r, 0, 0); }
+  function piece(x, y, vx, vy, ball) {
+    return { x, y, vx, vy, ball, w: ball ? 9 : 7 + Math.random() * 7, h: ball ? 9 : 4 + Math.random() * 5,
+      rot: Math.random() * 6.28, vr: (Math.random() - .5) * .35, wob: Math.random() * 6.28,
+      color: ball ? '#dcf04b' : COLORS[(Math.random() * COLORS.length) | 0], life: 0 };
+  }
+  function spray(x, y, angle, spread, count, speed) {
+    for (let i = 0; i < count; i++) {
+      const a = angle + (Math.random() - .5) * spread, v = speed * (.55 + Math.random() * .6);
+      parts.push(piece(x, y, Math.cos(a) * v, Math.sin(a) * v, Math.random() < .12));
+    }
+  }
+  function celebrate(big = true) {
+    if (reduceMotion) return;
+    sizeCanvas(); cv.hidden = false;
+    const W = innerWidth, H = innerHeight, sp = Math.max(W, H) / 55;
+    spray(0, H, -Math.PI / 3.2, .9, big ? 140 : 60, sp); spray(W, H, -Math.PI + Math.PI / 3.2, .9, big ? 140 : 60, sp);
+    if (big) {
+      setTimeout(() => { if (!cv.hidden) spray(W / 2, H * .35, -Math.PI / 2, 2.6, 160, sp * .8); }, 650);
+      setTimeout(() => { if (!cv.hidden) { spray(0, H * .8, -Math.PI / 4, .7, 90, sp); spray(W, H * .8, -Math.PI * .75, .7, 90, sp); } }, 1500);
+      for (let i = 0; i < 120; i++) parts.push(piece(Math.random() * W, -20 - Math.random() * H * .6, (Math.random() - .5) * 2, 1 + Math.random() * 2, false));
+    }
+    if (!raf) raf = requestAnimationFrame(tick);
+  }
+  function tick() {
+    const W = innerWidth, H = innerHeight;
+    c2.clearRect(0, 0, W, H);
+    parts = parts.filter(p => p.y < H + 30 && p.life < 600);
+    for (const p of parts) {
+      p.life++; p.vy += .16; p.vx *= .985; p.vy *= .985; p.wob += .12;
+      p.x += p.vx + Math.sin(p.wob) * .6; p.y += p.vy; p.rot += p.vr;
+      c2.save(); c2.translate(p.x, p.y); c2.rotate(p.rot); c2.fillStyle = p.color;
+      if (p.ball) {
+        c2.beginPath(); c2.arc(0, 0, p.w / 2 + 1, 0, 6.28); c2.fill();
+        c2.strokeStyle = 'rgba(255,255,255,.85)'; c2.lineWidth = 1.2; c2.beginPath(); c2.arc(-p.w * .55, 0, p.w * .5, -1, 1); c2.stroke();
+      } else { c2.scale(1, Math.cos(p.wob)); c2.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); }
+      c2.restore();
+    }
+    if (parts.length) raf = requestAnimationFrame(tick); else { raf = 0; cv.hidden = true; }
+  }
+  function stopConfetti() { parts = []; if (raf) cancelAnimationFrame(raf); raf = 0; c2.clearRect(0, 0, innerWidth, innerHeight); cv.hidden = true; }
+
+  /* ---------- theme ---------- */
+  function inkFor(hex) {
+    const n = parseInt(hex.slice(1), 16), r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255;
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#14210a' : '#ffffff';
+  }
+  let loadedFont = 'modern';
+  function applyTheme() {
+    const c = st.cfg, R = document.documentElement.style, S = SURFACES[c.surface] || SURFACES.hard, F = FONTS[c.font] || FONTS.modern;
+    R.setProperty('--surface', S.surface); R.setProperty('--surround', S.surround); R.setProperty('--stripes', S.stripes); R.setProperty('--runoff', S.runoff); R.setProperty('--wear', S.wear);
+    R.setProperty('--ball', c.accent); R.setProperty('--ball-ink', inkFor(c.accent)); R.setProperty('--card', c.card);
+    R.setProperty('--name-scale', c.nameSize); R.setProperty('--score-scale', c.scoreSize);
+    R.setProperty('--font-num', F.num + ', "Arial Narrow", system-ui, sans-serif');
+    R.setProperty('--font-text', F.text + ', "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif');
+    if (loadedFont !== c.font) { loadedFont = c.font; $('#fontLink').href = 'https://fonts.googleapis.com/css2?' + F.q + '&display=swap'; }
+    $('#clock').hidden = !c.showTimer;
+  }
+
+  /* ---------- render ---------- */
+  const sides = [...document.querySelectorAll('.side')];
+  function paintAvatar(el, t) {
+    const av = st.avatar[t];
+    el.classList.toggle('flag', !!(av && av.flag));
+    el.style.backgroundImage = av && av.photo ? 'url(' + av.photo + ')' : '';
+    el.textContent = av && av.flag ? flagEmoji(av.flag) : (av && av.photo ? '' : (st.names[t][0] || '?').trim().charAt(0));
+  }
+  function render(bumpWho) {
+    const S = sim(st.pts), F = S.F, lab = pointLabels(S), c = st.cfg;
+    const keyPoints = [keyPoint(S, 0), keyPoint(S, 1)];
+    renderMoment(keyPoints);
+    sides.forEach(el => {
+      const t = +el.dataset.team;
+      el.dataset.pos = (t === st.startLeft) !== S.flipped ? 'L' : 'R';
+      paintAvatar(el.querySelector('.avatar'), t);
+      const n1 = el.querySelector('.n1'), n2 = el.querySelector('.n2');
+      n1.textContent = st.names[t][0]; n2.textContent = st.names[t][1]; n2.hidden = !c.doubles;
+      n1.classList.toggle('sm', c.doubles);
+      const serving = S.winner === null && S.serveTeam === t;
+      n1.classList.toggle('serving', c.doubles && serving && S.servePlayer === 0);
+      n2.classList.toggle('serving', c.doubles && serving && S.servePlayer === 1);
+      const sc = el.querySelector('.score');
+      sc.textContent = S.winner !== null ? (F.tbOnly ? S.sets[0].tb[t] : S.setsWon[t]) : lab[t];
+      if (bumpWho === t) { sc.classList.remove('bump'); void sc.offsetWidth; sc.classList.add('bump'); }
+      const sv = el.querySelector('.serve');
+      if (S.winner !== null) { sv.className = 'serve'; sv.textContent = S.winner === t ? '勝' : ''; }
+      else if (serving) {
+        sv.className = 'serve on';
+        sv.innerHTML = '<span class="ballicon"></span>' + (c.doubles ? esc(st.names[t][S.servePlayer]) + ' ' : '') + '發球 · ' + S.court;
+      } else { sv.className = 'serve'; sv.textContent = '接發球'; }
+      const tg = el.querySelector('.tag'), kp = keyPoints[t];
+      tg.hidden = !kp;
+      if (kp) {
+        tg.className = 'tag k-' + kp.kind;
+        tg.innerHTML = KP[kp.kind].zh + (kp.count > 1 ? ' ×' + kp.count : '') + (kp.alsoBreak ? ' · 破發' : '') + '<small>' + KP[kp.kind].en + '</small>';
+      }
+      const gm = el.querySelector('.games');
+      gm.hidden = !!F.tbOnly || S.mtb || S.winner !== null;
+      gm.querySelector('b').textContent = S.games[t];
+      el.setAttribute('aria-label', teamName(t) + ' ' + lab[t] + '，點擊得分');
+    });
+    renderBug(S);
+    $('#fmtTitle').textContent = F.label + (c.doubles ? ' · 雙打' : '');
+    $('#setInfo').textContent = S.winner !== null ? '比賽結束' : (F.tbOnly ? '' : (S.mtb ? '決勝搶十' : '第 ' + (S.sets.length + 1) + ' 盤'));
+    $('#pill').innerHTML = pillText(S);
+    $('#undo').disabled = st.pts.length === 0;
+    $('#mute').textContent = st.muted ? '音效：關' : '音效：開';
+    tickClock();
+    showWin(S);
+  }
+  let lastMoment = '';
+  function renderMoment(kps) {
+    const m = $('#moment');
+    const list = [0, 1].filter(t => kps[t]).sort((a, b) => KP[kps[b].kind].rank - KP[kps[a].kind].rank);
+    if (!list.length) { m.hidden = true; lastMoment = ''; return; }
+    const top = kps[list[0]], info = KP[top.kind];
+    let txt;
+    if (list.length === 2 && kps[0].kind === kps[1].kind) txt = '決勝分 · 雙方' + info.zh;
+    else txt = teamName(list[0]) + ' ' + info.zh + (top.count > 1 ? ' ×' + top.count : '') +
+      (list.length === 2 ? '　／　' + teamName(list[1]) + ' ' + KP[kps[list[1]].kind].zh : '');
+    const en = top.count > 1 && list.length === 1 ? top.count + ' ' + info.en + 'S' : info.en;
+    $('#momentEn').textContent = en; $('#momentTxt').textContent = txt;
+    m.className = 'moment k-' + top.kind;
+    const key = top.kind + txt;
+    if (key !== lastMoment) { void m.offsetWidth; m.classList.add('show'); }
+    else m.classList.add('show');
+    m.hidden = false; lastMoment = key;
+  }
+  function pillText(S) {
+    if (S.winner !== null) return '比賽結束 · <em>' + esc(teamName(S.winner)) + '</em> 勝';
+    if (st.pts.length === 0) return '點擊左右半場為該方得分 · <em>' + esc(teamName(S.serveTeam)) + '</em> 先發球';
+    if (S.inTB) return (S.tbTarget === 10 ? '搶十' : '搶七') + ' · 再 <em>' + (6 - (S.p[0] + S.p[1]) % 6) + '</em> 分換邊';
+    const [a, b] = S.p, g = S.games[0] + S.games[1] + 1;
+    let s = '第 ' + g + ' 局';
+    if (a >= 3 && b >= 3) {
+      if (a === b) s += st.cfg.noAd ? ' · <em>決勝分</em>' : ' · <em>平分 Deuce</em>';
+      else s += ' · <em>' + esc(teamName(a > b ? 0 : 1)) + ' 占先</em>';
+    }
+    if (g % 2 === 1) s += ' · 本局後換邊';
+    return s;
+  }
+  function renderBug(S) {
+    const F = S.F;
+    let html = '';
+    for (const t of [0, 1]) {
+      let cells = '';
+      if (F.tbOnly) {
+        cells = '<td class="' + (S.winner === t ? 'won' : '') + '">' + (S.winner !== null ? S.sets[0].tb[t] : S.p[t]) + '</td>';
+      } else {
+        for (const s of S.sets) {
+          const mine = s.mtb ? s.tb[t] : s.g[t], won = s.g[t] > s.g[1 - t];
+          const sup = s.tb && !s.mtb && !won ? '<sup>' + s.tb[t] + '</sup>' : '';
+          cells += '<td class="' + (won ? 'won' : '') + '">' + mine + sup + '</td>';
+        }
+        if (S.winner === null) cells += '<td class="cur">' + (S.mtb ? S.p[t] : S.games[t]) + '</td>';
+      }
+      const dot = S.winner === null && S.serveTeam === t ? '<i></i>' : '';
+      html += '<tr><td class="sv">' + dot + '</td><td class="bn">' + esc(teamName(t)) + '</td>' + cells + '</tr>';
+    }
+    $('#bug').innerHTML = html;
+  }
+  const fmtDur = ms => { const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); };
+  function tickClock() { $('#clockTxt').textContent = st.t0 ? fmtDur((st.t1 || Date.now()) - st.t0) : '0:00'; }
+  setInterval(tickClock, 1000);
+
+  function showWin(S) {
+    const m = $('#winModal');
+    if (S.winner === null) { m.hidden = true; stopConfetti(); return; }
+    const w = S.winner, l = 1 - w, F = S.F;
+    $('#winEyebrow').textContent = F.tbOnly ? F.short + '勝出' : '比賽冠軍';
+    $('#winTitle').innerHTML = '<span class="goldtxt">' + esc(teamName(w)) + '</span> ' + (F.tbOnly ? '贏得' + F.short : '贏得比賽');
+    const sc = $('#winScore');
+    if (F.tbOnly) {
+      const tb = S.sets[0].tb;
+      sc.className = 'final';
+      sc.innerHTML = tb[w] + '–' + tb[l] + (F.tbOnly === 7 ? '<small>本盤局數記為 7:6</small>' : '');
+    } else {
+      sc.className = 'final sets';
+      sc.innerHTML = S.sets.map(s => s.mtb ? '[' + s.tb[w] + '–' + s.tb[l] + ']'
+        : s.g[w] + '–' + s.g[l] + (s.tb ? '<sup>' + Math.min(s.tb[0], s.tb[1]) + '</sup>' : '')).join(' ');
+    }
+    const dur = st.t0 ? '<div>比賽時間 <b>' + fmtDur((st.t1 || Date.now()) - st.t0) + '</b></div>' : '';
+    $('#winNext').innerHTML = F.tbOnly === 7
+      ? '<div>下一盤：雙方<b>交換場地</b>。</div><div>搶七先發球的 ' + esc(teamName(st.first)) + ' 在下一盤第一局<b>接發球</b>，由 ' + esc(teamName(1 - st.first)) + ' 發球。</div>' + dur
+      : '<div>盤數 <b>' + S.setsWon[w] + '–' + S.setsWon[l] + '</b></div>' + dur;
+    m.hidden = false;
+  }
+
+  let bannerTimer;
+  function flashBanner(text) {
+    const b = $('#banner'), inner = $('#bannerTxt');
+    inner.textContent = text; b.hidden = false; inner.style.animation = 'none'; void inner.offsetWidth; inner.style.animation = '';
+    clearTimeout(bannerTimer); bannerTimer = setTimeout(() => { b.hidden = true; }, 2100);
+  }
+
+  /* ---------- actions ---------- */
+  function addPoint(t) {
+    const B = sim(st.pts); if (B.winner !== null) return;
+    if (!st.t0) st.t0 = Date.now();
+    st.pts.push(t);
+    const A = sim(st.pts);
+    if (A.winner !== null) { st.t1 = Date.now(); sfx.win(); celebrate(true); }
+    else if (A.sets.length > B.sets.length) {
+      sfx.set(); celebrate(false);
+      flashBanner(teamName(t) + ' 拿下第 ' + A.sets.length + ' 盤' + (A.flips !== B.flips ? ' · 交換場地' : ''));
+    }
+    else if (A.flips !== B.flips) { sfx.change(); flashBanner('交換場地'); }
+    else if (A.gameIdx > B.gameIdx) sfx.game();
+    else sfx.point();
+    if (A.winner === null) {
+      st.pts.pop(); // keyPoint reads st.pts, so evaluate the previous state on the old list
+      const pre = [keyPoint(B, 0), keyPoint(B, 1)].map(k => k ? KP[k.kind].rank : 0);
+      st.pts.push(t);
+      const now = [keyPoint(A, 0), keyPoint(A, 1)].map(k => k ? KP[k.kind].rank : 0);
+      const best = Math.max(...now);
+      if (best >= 2 && best > Math.max(...pre)) sfx.alert(best);
+    }
+    save(); render(t);
+  }
+  sides.forEach(el => el.addEventListener('click', () => { if (demo) return stopDemo(); addPoint(+el.dataset.team); }));
+  function undo() {
+    if (demo) return stopDemo(); if (!st.pts.length) return;
+    st.pts.pop(); st.t1 = null; if (!st.pts.length) st.t0 = null;
+    save(); ctx(); sfx.undo(); render();
+  }
+  $('#undo').addEventListener('click', undo);
+  $('#winUndo').addEventListener('click', undo);
+  $('#mute').addEventListener('click', () => { st.muted = !st.muted; save(); render(); if (!st.muted) sfx.point(); });
+  $('#fs').addEventListener('click', () => {
+    try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); } catch (e) {}
+  });
+  document.addEventListener('keydown', e => {
+    if (!$('#setupModal').hidden || !$('#tossModal').hidden || !$('#homeModal').hidden) return;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      const el = sides.find(s => s.dataset.pos === (e.key === 'ArrowLeft' ? 'L' : 'R'));
+      if (el) { e.preventDefault(); addPoint(+el.dataset.team); }
+    } else if ((e.key === 'z' && (e.metaKey || e.ctrlKey)) || e.key === 'Backspace') { e.preventDefault(); undo(); }
+  });
+
+  /* ---------- demo: a scripted tie-break that reaches 6:6 and ends 8:6 ---------- */
+  const SCRIPT = [0,1,1,0,0,1, 0,0,1,1,0,1, 0,0];
+  function startDemo() {
+    demo = { saved: JSON.parse(JSON.stringify(st)), timer: null };
+    st.cfg = Object.assign({}, st.cfg, { mode: 'tb', tbFormat: 'tb7' }); st.pts = []; st.t0 = null; st.t1 = null;
+    if (st.names[0][0] === '選手 A' && st.names[1][0] === '選手 B') st.names = [['林小網', '王小球'], ['陳大發', '李大拍']];
+    $('#setupModal').hidden = true; $('#tossModal').hidden = true; $('#homeModal').hidden = true; ctx(); render();
+    let i = 0;
+    const step = () => {
+      if (!demo) return;
+      if (i < SCRIPT.length) {
+        addPoint(SCRIPT[i++]);
+        const d = sim(st.pts);
+        demo.timer = setTimeout(step, d.ev.change && d.winner === null ? 2600 : 1500);
+      } else demo.timer = setTimeout(stopDemo, 6000);
+    };
+    demo.timer = setTimeout(step, 1200);
+  }
+  function stopDemo() {
+    if (!demo) return;
+    clearTimeout(demo.timer); st = demo.saved; demo = null;
+    $('#banner').hidden = true; applyTheme(); render();
+    if (!st.pts.length) openHome();
+  }
+  $('#winModal').addEventListener('click', e => { if (demo) { e.stopPropagation(); stopDemo(); } }, true);
+
+  /* ---------- settings ---------- */
+  const setupModal = $('#setupModal'), form = $('#setupForm');
+  const radio = n => (form.querySelector('input[name="' + n + '"]:checked') || {}).value;
+  const setRadio = (n, v) => { const el = form.querySelector('input[name="' + n + '"][value="' + v + '"]'); if (el) el.checked = true; };
+  for (const t of [0, 1]) {
+    $('#flag' + t).innerHTML = '<option value="">國旗（不選）</option>' + FLAGS.map(([c, n]) => '<option value="' + c + '">' + flagEmoji(c) + ' ' + n + '</option>').join('');
+  }
+  function syncMatchForm() {
+    const fmt = radio('format'), dbl = radio('mode') === 'd';
+    form.querySelectorAll('.dbl').forEach(el => el.hidden = !dbl);
+    form.querySelectorAll('.lab1').forEach(el => el.textContent = dbl ? '名字（第一發球員）' : '名字');
+    form.querySelectorAll('input[name="final"]').forEach(el => el.disabled = !(FORMATS[fmt].sets > 1));
+    form.querySelectorAll('input[name="deuce"]').forEach(el => el.disabled = !!FORMATS[fmt].tbOnly);
+  }
+  function refreshAvatars() { for (const t of [0, 1]) { paintAvatar($('#av' + t), t); $('#flag' + t).value = (st.avatar[t] && st.avatar[t].flag) || ''; } }
+  function showTab(name) {
+    form.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === name));
+    form.querySelectorAll('[data-pane]').forEach(p => p.hidden = p.dataset.pane !== name);
+  }
+  let returnHome = false;
+  function openSetup(tab = 'match', fromHome = false) {
+    stopDemo(); returnHome = fromHome; $('#homeModal').hidden = true;
+    const c = st.cfg;
+    setRadio('format', c.matchFormat); setRadio('mode', c.doubles ? 'd' : 's'); setRadio('deuce', c.noAd ? 'noad' : 'ad'); setRadio('final', c.final);
+    setRadio('surface', c.surface); setRadio('font', c.font);
+    $('#nameSize').value = c.nameSize; $('#scoreSize').value = c.scoreSize;
+    $('#accent').value = c.accent; $('#cardColor').value = c.card; $('#showTimer').checked = c.showTimer;
+    for (const t of [0, 1]) for (const k of [0, 1]) $('#n' + t + k).value = st.names[t][k];
+    refreshAvatars(); syncMatchForm(); showTab(tab);
+    setupModal.hidden = false;
+  }
+  form.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+  form.addEventListener('change', e => { if (['format', 'mode'].includes(e.target.name)) syncMatchForm(); });
+  for (const t of [0, 1]) for (const k of [0, 1]) $('#n' + t + k).addEventListener('input', e => {
+    st.names[t][k] = e.target.value.trim() || (k ? '隊友 ' : '選手 ') + 'AB'[t]; save(); render(); refreshAvatars();
+  });
+  for (const t of [0, 1]) {
+    $('#flag' + t).addEventListener('change', e => { st.avatar[t] = e.target.value ? { flag: e.target.value } : null; save(); render(); refreshAvatars(); });
+    $('#clr' + t).addEventListener('click', () => { st.avatar[t] = null; save(); render(); refreshAvatars(); });
+    $('#photo' + t).addEventListener('change', e => {
+      const f = e.target.files && e.target.files[0]; if (!f) return;
+      const url = URL.createObjectURL(f), img = new Image();
+      img.onload = () => {
+        const N = 256, cvs = document.createElement('canvas'); cvs.width = cvs.height = N;
+        const s = Math.min(img.width, img.height);
+        cvs.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, N, N);
+        st.avatar[t] = { photo: cvs.toDataURL('image/jpeg', .85) }; URL.revokeObjectURL(url);
+        save(); render(); refreshAvatars();
+      };
+      img.src = url; e.target.value = '';
+    });
+  }
+  const lookInputs = () => {
+    const c = st.cfg;
+    c.surface = radio('surface'); c.font = radio('font');
+    c.nameSize = +$('#nameSize').value; c.scoreSize = +$('#scoreSize').value;
+    c.accent = $('#accent').value; c.card = $('#cardColor').value; c.showTimer = $('#showTimer').checked;
+    applyTheme(); save(); render();
+  };
+  const lookPane = form.querySelector('[data-pane="look"]');
+  lookPane.addEventListener('input', lookInputs);
+  lookPane.addEventListener('change', lookInputs);
+  $('#resetColors').addEventListener('click', () => { $('#accent').value = DEFAULT_COLORS.accent; $('#cardColor').value = DEFAULT_COLORS.card; lookInputs(); });
+
+  $('#setup').addEventListener('click', () => openSetup());
+  $('#closeSetup').addEventListener('click', () => { setupModal.hidden = true; if (returnHome) openHome(); });
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const c = st.cfg;
+    c.matchFormat = radio('format'); c.doubles = radio('mode') === 'd'; c.noAd = radio('deuce') === 'noad'; c.final = radio('final');
+    st.pts = []; st.t0 = null; st.t1 = null; st.tossed = false; save();
+    returnHome = false; setupModal.hidden = true; ctx(); render(); openToss();
+  });
+  $('#winNew').addEventListener('click', () => openHome());
+  $('#demoBtn').addEventListener('click', startDemo);
+  $('#tossBtn').addEventListener('click', () => { setupModal.hidden = true; ctx(); openToss(); });
+
+  /* ---------- coin toss: winner picks serve/receive OR an end, opponent picks the other ---------- */
+  const tossModal = $('#tossModal'), coin = $('#coin'), choicesEl = $('#tossChoices');
+  let toss = null;
+  const nm = i => esc(teamName(i));
+  function openToss() {
+    stopDemo();
+    toss = { winner: null, pick: {}, busy: false };
+    $('#faceA').textContent = teamName(0); $('#faceB').textContent = teamName(1);
+    coin.style.transition = 'none'; coin.style.transform = 'rotateX(0deg)';
+    $('#tossTitle').textContent = '擲硬幣決定發球與場地';
+    $('#tossMsg').innerHTML = '正面：' + nm(0) + '　・　反面：' + nm(1);
+    choicesEl.innerHTML = '<button class="btn primary" type="button" data-act="flip">擲硬幣</button>';
+    tossModal.hidden = false;
+  }
+  function flipCoin() {
+    if (toss.busy) return; toss.busy = true;
+    const r = Math.random() < .5 ? 0 : 1;
+    choicesEl.innerHTML = ''; $('#tossMsg').textContent = '硬幣在空中……';
+    coin.style.transition = 'none'; coin.style.transform = 'rotateX(0deg)'; void coin.offsetWidth;
+    const spins = 7 + Math.floor(Math.random() * 3);
+    coin.style.transition = reduceMotion ? 'none' : 'transform 1.65s cubic-bezier(.2,.7,.35,1)';
+    coin.style.transform = 'rotateX(' + (spins * 360 + (r ? 180 : 0)) + 'deg)';
+    for (const el of [$('#coinAir'), $('#coinShadow')]) { el.classList.remove('fly'); void el.offsetWidth; el.classList.add('fly'); }
+    sfx.coinFlip();
+    setTimeout(() => {
+      toss.winner = r; toss.busy = false; sfx.tossWin();
+      $('#tossTitle').innerHTML = '<span class="goldtxt">' + nm(r) + '</span> 贏得擲幣';
+      stepOne();
+    }, reduceMotion ? 300 : 2050);
+  }
+  const sideBtns = who => '<button class="btn" type="button" data-act="side" data-v="L">選畫面左側<small>' + nm(who) + ' 開始時在左邊</small></button>' +
+                         '<button class="btn" type="button" data-act="side" data-v="R">選畫面右側<small>' + nm(who) + ' 開始時在右邊</small></button>';
+  const serveBtns = () => '<button class="btn" type="button" data-act="serve" data-v="1">先發球<small>第 1 局由我方發球</small></button>' +
+                          '<button class="btn" type="button" data-act="serve" data-v="0">先接發球<small>由對手先發</small></button>';
+  function stepOne() {
+    const w = toss.winner;
+    $('#tossMsg').innerHTML = (w === 0 ? '正面' : '反面') + '！請 <strong>' + nm(w) + '</strong> 選一項，另一項由對手決定';
+    choicesEl.innerHTML = serveBtns() + sideBtns(w);
+  }
+  function stepTwo() {
+    const o = 1 - toss.winner;
+    $('#tossMsg').innerHTML = '換 <strong>' + nm(o) + '</strong> 選擇' + ('serve' in toss.pick ? '場地' : '發球或接發球');
+    choicesEl.innerHTML = 'serve' in toss.pick ? sideBtns(o) : serveBtns();
+  }
+  function summary() {
+    const { first, left } = toss.result;
+    $('#tossTitle').textContent = '準備開始';
+    $('#tossMsg').innerHTML = '';
+    const order = st.cfg.doubles
+      ? '<div>發球順序：' + [[first, 0], [1 - first, 0], [first, 1], [1 - first, 1]].map(([t, k]) => esc(st.names[t][k])).join(' → ') + '</div>' : '';
+    choicesEl.innerHTML =
+      '<div class="summary"><div><b>' + nm(first) + '</b> 先發球，' + nm(1 - first) + ' 接發球</div>' +
+      '<div><b>' + nm(left) + '</b> 在畫面左側，' + nm(1 - left) + ' 在畫面右側</div>' + order + '</div>' +
+      '<button class="btn" type="button" data-act="again">重新擲硬幣</button>' +
+      '<button class="btn primary" type="button" data-act="start">開始比賽</button>';
+  }
+  choicesEl.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !toss) return;
+    const act = b.dataset.act, v = b.dataset.v;
+    if (act === 'flip') return flipCoin();
+    if (act === 'again') return openToss();
+    if (act === 'start') {
+      st.first = toss.result.first; st.startLeft = toss.result.left; st.tossed = true; st.pts = []; st.t0 = null; st.t1 = null;
+      save(); tossModal.hidden = true; render(); return;
+    }
+    const chooser = Object.keys(toss.pick).length === 0 ? toss.winner : 1 - toss.winner;
+    if (act === 'serve') toss.pick.serve = v === '1' ? chooser : 1 - chooser;
+    if (act === 'side') toss.pick.side = v === 'L' ? chooser : 1 - chooser;
+    sfx.undo();
+    if (Object.keys(toss.pick).length < 2) return stepTwo();
+    toss.result = { first: toss.pick.serve, left: toss.pick.side };
+    summary();
+  });
+  $('#tossSkip').addEventListener('click', () => { st.tossed = true; save(); tossModal.hidden = true; render(); });
+
+  /* ---------- home menu: tie-break on its own, or a full match ---------- */
+  const homeModal = $('#homeModal');
+  function openHome() {
+    stopDemo();
+    const c = st.cfg, M = FORMATS[c.matchFormat];
+    for (const m of ['#setupModal', '#tossModal', '#winModal']) $(m).hidden = true;
+    stopConfetti();
+    homeModal.querySelector('input[name="tbfmt"][value="' + c.tbFormat + '"]').checked = true;
+    syncTbCard();
+    $('#matchSummary').textContent = M.label + ' · ' + (c.doubles ? '雙打' : '單打') + ' · ' + (c.noAd ? '無占先（金球）' : '占先制') +
+      (M.sets > 1 ? ' · 決勝盤' + (c.final === 'mtb' ? '打搶十' : '6:6 搶七') : '');
+    const S = sim(st.pts), going = st.pts.length > 0 && S.winner === null;
+    $('#resume').hidden = !going;
+    if (going) $('#resumeTxt').textContent = '進行中：' + FORMATS[fmt()].label + '，' + teamName(0) + ' 對 ' + teamName(1);
+    homeModal.hidden = false;
+  }
+  function syncTbCard() {
+    const v = homeModal.querySelector('input[name="tbfmt"]:checked').value;
+    $('#tbIco').innerHTML = (v === 'tb10' ? '10' : '7') + '<small>分</small>';
+    homeModal.querySelector('[data-go="tb"]').textContent = v === 'tb10' ? '開始搶十' : '開始搶七';
+  }
+  homeModal.querySelectorAll('input[name="tbfmt"]').forEach(r => r.addEventListener('change', syncTbCard));
+  homeModal.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => {
+    const c = st.cfg;
+    c.mode = b.dataset.go;
+    if (c.mode === 'tb') c.tbFormat = homeModal.querySelector('input[name="tbfmt"]:checked').value;
+    st.pts = []; st.t0 = null; st.t1 = null; st.tossed = false; save();
+    homeModal.hidden = true; ctx(); render(); openToss();
+  }));
+  $('#resumeBtn').addEventListener('click', () => { homeModal.hidden = true; });
+  $('#homeFormat').addEventListener('click', () => openSetup('match', true));
+  $('#homePlayers').addEventListener('click', () => openSetup('players', true));
+  $('#homeDemo').addEventListener('click', () => { homeModal.hidden = true; startDemo(); });
+  $('#homeBtn').addEventListener('click', () => { ctx(); openHome(); });
+
+  /* keep the tablet screen awake */
+  async function wake() { try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } catch (e) {} }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
+  document.addEventListener('pointerdown', () => { ctx(); wake(); }, { once: true });
+
+  applyTheme();
+  render();
+  if (st.pts.length === 0) openHome();
+})();
+</script>
+
+</body>
+</html>
